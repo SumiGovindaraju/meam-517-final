@@ -1,0 +1,7 @@
+certifi==2022.9.14
+matplotlib==3.6.2
+numpy==1.23.2
+pandas==2.0.0
+pytz==2023.3
+requests==2.28.1
+traci==1.19.0
