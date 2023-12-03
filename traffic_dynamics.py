@@ -21,27 +21,31 @@ class Traffic:
         self.T = 1
         self.D = 0
 
+        # costs
+        self.Q = np.zeros((self.N, self.N))
+        self.R = np.zeros((self.N, self.N))
+
     # function for parsing the SUMO file and creating the dynamics from it
     def parse_sumo(self, sumo_file):
-        # TODO: learn the necessary dynamics from the SUMO file
+        # TODO: learn the necessary dynamics from the linksToFlows.csv file
         pass
 
     # Eqn. 5
     def g_k(self, G_k):
-        S = 0 # TODO
-        C = self.C # TODO
+        S = self.C
+        C = self.C 
         return G_k @ S / C
 
     # Eqn. 6
     def x_kp1(self, x_k, g_k, d_k):
-        B = 0 # TODO
-        T = 0 # TODO
+        B = self.B
+        T = self.B
         return x_k + B @ g_k + T * d_k
 
     # getting the cost of a particular state
-    def calculate_cost(self, x_k, g_k):
-        Q = np.zeros((self.N, self.N)) # TODO
-        R = np.zeros((self.N, self.N)) # TODO
+    def cost(self, x_k, g_k):
+        Q = self.Q
+        R = self.R
         return x_k.T @ Q @ x_k + g_k.T @ R @ g_k
 
 
