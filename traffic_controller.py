@@ -1,23 +1,35 @@
-from traffic_dynamics import *
+from traffic_dynamics import Traffic
+from scipy.linalg import solve_discrete_are
+import osqp
+import numpy as np
 
 class TrafficController:
     def __init__(self):
         # Initialize any necessary variables or data structures
         pass
 
-    def run(self):
-        # Main control loop for the traffic controller
-        pass
+    def LQR(self, traffic_object):
+        A = traffic_object.A
+        B  = traffic_object.B
+        R = traffic_object.R
+        Q = traffic_object.Q
 
-    def handle_sensor_data(self, sensor_data):
-        # Process sensor data and make decisions based on it
-        pass
+        # Solve the discrete-time algebraic Riccati equation
+        P = solve_discrete_are(A, B, Q, R)
+        P = np.eye(traffic_object.N)
 
-    def update_traffic_lights(self):
-        # Update the state of the traffic lights based on the controller's decisions
-        pass
+        # Compute the optimal green-time gain G
+        G = -np.linalg.inv(R + B.T @ P @ B) @ B.T @ P @ A
 
-
-    def log_data(self):
-        # Log relevant data for analysis or debugging purposes
-        pass
+        return G # very finnicky, some values are returning negative, need to fix the cost function or the dynamics. Also adjust the scaling with a time cycle
+    
+    def MPC(self, traffic_object):
+        # TODO: use this to add constaints to the above LQR problem in OSQP
+        pass  
+        
+if __name__ == "__main__":
+    traffic = Traffic("linkToFlows.csv")
+    traffic.parse_sumo()
+    controller = TrafficController()
+    G = controller.LQR(traffic)
+    print(G)
