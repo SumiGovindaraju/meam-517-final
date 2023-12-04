@@ -4,7 +4,7 @@ import time
 from random import randrange
 import pandas as pd
 
-sumoCmd = ["sumo", "-c", "osm.sumocfg"]
+sumoCmd = ["sumo", "-c", "DoubleIntersection.sumocfg"]
 traci.start(sumoCmd)
 
 packVehicleData = []
