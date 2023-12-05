@@ -44,7 +44,7 @@ class Traffic:
         # getting the number of lights to control
         return len(self.df.index)
 
-    # function for parsing the SUMO file and creating the dynamics from it
+    # function for parsing the SUMO file and creating the dynamics and cost from it
     def parse_sumo(self):
 
         # defining the B matrix based on historical data from the cycle horizon
@@ -59,6 +59,9 @@ class Traffic:
             u_z = self.df['outflow'][z]
 
             self.B[z][z] = (q_z - u_z) # Eqn. 3
+
+            # Q cost on maximum queue length
+            self.Q[z][z] = 1 / self.df['maxQueueLength'][z]
 
         # updating the spawn and despawn rates
         self.d_k = np.array(self.df['despawns'])
@@ -86,12 +89,17 @@ class Traffic:
     
     def add_initial_state_constraint(self, prog, x, x_current):
         # initial state constraint
+        # print(x_current.shape)
+        # print(x[0].shape)
         prog.AddBoundingBoxConstraint(x_current, x_current, x[0])
+        print('intial state constraint added')
 
     def add_input_saturation_constraint(self, prog, x, g):
         # limits on green time
         for i in range(self.num_steps-1):
             prog.AddBoundingBoxConstraint(0, self.C, g[i])
+        
+        print('input saturation constraint added')
 
 
     def add_dynamics_constraint(self, prog, x, g):
@@ -100,10 +108,14 @@ class Traffic:
             x_e = x[k]
             g_e = g[k]
             x_e_kp1 = x[k+1]
-            x_dyn_kp1 = self.x_kp1(x, g)
+            x_dyn_kp1 = self.x_kp1(x[k], g[k])
+            # print(x_dyn_kp1.shape)
+            # print(x_e_kp1.shape)
 
             for i in range(self.N):
                 prog.AddLinearEqualityConstraint(x_dyn_kp1[i] == x_e_kp1[i])
+
+        print('dynamics constraint added')
 
     def add_cost(self, prog, x, g):
         # quadratic cost on the state and input
@@ -111,22 +123,25 @@ class Traffic:
             x_e = x[k] 
             g_e = g[k]
             prog.AddQuadraticCost(x_e.T @ self.Q @ x_e + g_e.T @ self.R @ g_e)
+        print('cost added')
 
     def compute_MPC_feedback(self, x_current, use_clf=False):
 
         # Parameters for the QP
         num_steps = self.num_steps
-        N = self.N
+        n_x = self.N
+        n_g = self.N
         T = self.T
 
         # Initialize mathematical program and decalre decision variables
         prog = MathematicalProgram()
-        x = np.zeros((N, 6), dtype="object")
-        for i in range(N):
-            x[i] = prog.NewContinuousVariables(6, "x_" + str(i))
-            g = np.zeros((N-1, 2), dtype="object")
-        for i in range(N-1):
-            g[i] = prog.NewContinuousVariables(2, "g_" + str(i))
+        x = np.zeros((num_steps, n_x), dtype="object")
+        g = np.zeros((num_steps, n_g), dtype="object")
+        for i in range(num_steps):
+            x[i] = prog.NewContinuousVariables(n_x, "x_" + str(i))
+
+        for i in range(num_steps):
+            g[i] = prog.NewContinuousVariables(n_g, "g_" + str(i))
 
         # Add constraints and cost
         self.add_initial_state_constraint(prog, x, x_current)
@@ -146,7 +161,7 @@ if __name__ == "__main__":
     traffic = Traffic("linkToFlows.csv")
     traffic.parse_sumo()
     print(traffic.B)
-    # x_current = np.ones((traffic.N, 1))
+    x_current = np.ones((traffic.N, 1))
     # g_lqr, link_list = traffic.compute_LQR_feedback(x_current)
     # print("LQR RESULT: ", g_lqr)
     g_mpc, link_list = traffic.compute_MPC_feedback(x_current)
