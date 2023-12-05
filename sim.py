@@ -12,7 +12,7 @@ CYCLE_LENGTH = 60  # seconds
 
 ######## ###### ########
 
-sumoCmd = ["sumo", "-c", "DoubleIntersection.sumocfg",
+sumoCmd = ["sumo", "-c", "grid.sumocfg",
                    "--step-length", str(STEP_LENGTH)]
 traci.start(sumoCmd)
 
