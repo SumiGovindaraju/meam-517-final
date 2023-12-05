@@ -10,6 +10,9 @@ import pandas as pd
 STEP_LENGTH = 0.1  # seconds
 CYCLE_LENGTH = 60  # seconds
 
+VEHICLE_LENGTH = 5 # meters
+VEHICLE_MIN_GAP = 2.5 # meters
+
 ######## ###### ########
 
 sumoCmd = ["sumo", "-c", "grid.sumocfg",
@@ -18,6 +21,17 @@ traci.start(sumoCmd)
 
 for tlsid in traci.trafficlight.getIDList():
     traci.trafficlight.setParameter(tlsid, "cycleTime", str(CYCLE_LENGTH))
+
+linkIDToMaxQueueLength = {}
+
+for laneid in traci.lane.getIDList():
+    link = traci.lane.getEdgeID(laneid)
+    length = traci.lane.getLength(laneid)
+
+    if length > VEHICLE_LENGTH:
+        linkIDToMaxQueueLength[link] = 1 + (length - VEHICLE_LENGTH) / (VEHICLE_LENGTH + VEHICLE_MIN_GAP)
+    else:
+        linkIDToMaxQueueLength[link] = 0
 
 packVehicleData = []
 packTLSData = []
@@ -56,6 +70,10 @@ while traci.simulation.getMinExpectedNumber() > 0:
                 tmpLinkToInflow[link] = tmpLinkToInflow.get(link, 0) + 1
                 vehToLinkIDMap[vehid] = link
         else:
+            # Config vehicle
+            traci.vehicle.setLength(vehid, VEHICLE_LENGTH)
+            traci.vehicle.setMinGap(vehid, VEHICLE_MIN_GAP)
+
             vehToLinkIDMap[vehid] = link
             tmpLinkToSpawns[link] = tmpLinkToSpawns.get(link, 0) + 1
     
@@ -92,7 +110,8 @@ for link in linkIDToInflows.keys():
         'inflow': avg(linkIDToInflows[link]) / STEP_LENGTH, 
         'outflow': avg(linkIDToOutflows[link]) / STEP_LENGTH,
         'spawns': avg(linkIDToSpawns[link]) / STEP_LENGTH,
-        'despawns': avg(linkIDToDespawns[link]) / STEP_LENGTH
+        'despawns': avg(linkIDToDespawns[link]) / STEP_LENGTH,
+        'maxQueueLength': linkIDToMaxQueueLength.get(link, 0)
     })
 
 df = pd.DataFrame(data)
