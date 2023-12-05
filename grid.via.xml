@@ -1,0 +1,28 @@
+<edgedata>
+    <interval id="via" begin="0" end="3600">
+        <edge id="E7" value="100.00"/>
+        <edge id="E4" value="100.00"/>
+        <edge id="E10" value="100.00"/>
+        <edge id="E1" value="100.00"/>
+        <edge id="-E7" value="100.00"/>
+        <edge id="-E4" value="100.00"/>
+        <edge id="-E10" value="100.00"/>
+        <edge id="-E1" value="100.00"/>
+        <edge id="E9" value="0.00"/>
+        <edge id="E8" value="0.00"/>
+        <edge id="E6" value="0.00"/>
+        <edge id="E5" value="0.00"/>
+        <edge id="E3" value="0.00"/>
+        <edge id="E2" value="0.00"/>
+        <edge id="E11" value="0.00"/>
+        <edge id="E0" value="0.00"/>
+        <edge id="-E9" value="0.00"/>
+        <edge id="-E8" value="0.00"/>
+        <edge id="-E6" value="0.00"/>
+        <edge id="-E5" value="0.00"/>
+        <edge id="-E3" value="0.00"/>
+        <edge id="-E2" value="0.00"/>
+        <edge id="-E11" value="0.00"/>
+        <edge id="-E0" value="0.00"/>
+    </interval>
+</edgedata>
