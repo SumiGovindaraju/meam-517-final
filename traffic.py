@@ -85,7 +85,7 @@ class Traffic:
         return g_current, self.df['link'] # very finnicky, some values are returning negative, need to fix the cost function or the dynamics. Also adjust the scaling with a time cycle
     
     def add_initial_state_constraint(self, prog, x, x_current):
-        # initial state constraint.
+        # initial state constraint
         prog.AddBoundingBoxConstraint(x_current, x_current, x[0])
 
     def add_input_saturation_constraint(self, prog, x, g):
@@ -115,6 +115,7 @@ class Traffic:
     def compute_MPC_feedback(self, x_current, use_clf=False):
 
         # Parameters for the QP
+        num_steps = self.num_steps
         N = self.N
         T = self.T
 
@@ -136,7 +137,7 @@ class Traffic:
         # Solve the QP
         solver = OsqpSolver()
         result = solver.Solve(prog)
-        g_mpc = result.GetSolution(u[0])
+        g_mpc = result.GetSolution(g[0])
 
         return g_mpc, self.df['link']
 
