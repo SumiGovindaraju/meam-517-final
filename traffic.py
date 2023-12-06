@@ -63,6 +63,9 @@ class Traffic:
             # Q cost on maximum queue length
             self.Q[z][z] = 1 / self.df['maxQueueLength'][z]
 
+            # R cost on maximum green time (ie. cycle time)
+            self.R[z][z] = 1 / self.C
+
         # updating the spawn and despawn rates
         self.d_k = np.array(self.df['despawns'])
         self.s_k = np.array(self.df['spawns'])
@@ -97,7 +100,7 @@ class Traffic:
     def add_input_saturation_constraint(self, prog, x, g):
         # limits on green time
         for i in range(self.num_steps-1):
-            prog.AddBoundingBoxConstraint(0, self.C, g[i])
+            prog.AddBoundingBoxConstraint(self.C / 10,  self.C, g[i])
         
         print('input saturation constraint added')
 
@@ -120,8 +123,10 @@ class Traffic:
     def add_cost(self, prog, x, g):
         # quadratic cost on the state and input
         for k in range(self.num_steps - 1): 
-            x_e = x[k] 
-            g_e = g[k]
+            x_d = np.zeros(self.N)
+            g_d = self.C / 2 * np.ones(self.N) # don't want to deviate too much from 50/50 split
+            x_e = x[k] - x_d
+            g_e = g[k] - g_d
             prog.AddQuadraticCost(x_e.T @ self.Q @ x_e + g_e.T @ self.R @ g_e)
         print('cost added')
 
@@ -162,8 +167,9 @@ if __name__ == "__main__":
     traffic.parse_sumo()
     print(traffic.B)
     x_current = np.ones((traffic.N, 1))
-    # g_lqr, link_list = traffic.compute_LQR_feedback(x_current)
-    # print("LQR RESULT: ", g_lqr)
+    g_lqr, link_list = traffic.compute_LQR_feedback(x_current)
+    print("LQR RESULT: ", g_lqr)
     g_mpc, link_list = traffic.compute_MPC_feedback(x_current)
     print("MPC RESULT: ", g_mpc)
+    print(sum(g_mpc))
 
