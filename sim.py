@@ -15,39 +15,55 @@ VEHICLE_MIN_GAP = 2.5 # meters
 
 ######## ###### ########
 
+# Edge Indexing
+edgeToLinkIdx = {}
+tflToJunctionIdx = {}
+
+def getLinkIdx(edge):
+    if ":J" in edge:
+        return -1
+
+    if edge not in edgeToLinkIdx:
+        edgeToLinkIdx[edge] = int(len(edgeToLinkIdx))
+
+    return edgeToLinkIdx[edge]
+
+def getJunctionIdx(tflid):
+    if tflid not in tflToJunctionIdx:
+        tflToJunctionIdx[tflid] = int(len(tflToJunctionIdx))
+
+    return tflToJunctionIdx[tflid]
+
+# Start sumo cmd
 sumoCmd = ["sumo", "-c", "grid.sumocfg",
                    "--step-length", str(STEP_LENGTH)]
 traci.start(sumoCmd)
 
+# Configure cycle time
 for tlsid in traci.trafficlight.getIDList():
     traci.trafficlight.setParameter(tlsid, "cycleTime", str(CYCLE_LENGTH))
 
-linkIDToMaxQueueLength = {}
-
+# Estimate max queue length
+linkToMaxQueueLength = {}
 for laneid in traci.lane.getIDList():
     link = traci.lane.getEdgeID(laneid)
     length = traci.lane.getLength(laneid)
 
     if length > VEHICLE_LENGTH:
-        linkIDToMaxQueueLength[link] = 1 + (length - VEHICLE_LENGTH) / (VEHICLE_LENGTH + VEHICLE_MIN_GAP)
+        linkToMaxQueueLength[link] = 1 + (length - VEHICLE_LENGTH) / (VEHICLE_LENGTH + VEHICLE_MIN_GAP)
     else:
-        linkIDToMaxQueueLength[link] = 0
+        linkToMaxQueueLength[link] = 0
 
-trafficlights = []
-
+# Get junctions
+linkToJunctionInfo = {}
 for tlsid in traci.trafficlight.getIDList():
-    junction = { "id": len(trafficlights) }
+    junctionIdx = getJunctionIdx(tlsid)
 
     for ls in traci.trafficlight.getControlledLinks(tlsid):
         for incoming_link, _, _ in ls:     
             incoming_link = incoming_link.rsplit('_', 1)[0]
-
-            junction[int(traci.edge.getAngle(incoming_link))] = incoming_link
-    
-    trafficlights.append(junction)
-
-df = pd.DataFrame(trafficlights)
-df.to_csv("junctions.csv", index=False)
+            orientation = int(0 if traci.edge.getAngle(incoming_link) % 180 == 0 else 1)
+            linkToJunctionInfo[incoming_link] = (junctionIdx, tlsid, orientation)
 
 packVehicleData = []
 packTLSData = []
@@ -121,13 +137,25 @@ def avg(ls):
 
 data = []
 for link in linkIDToInflows.keys():
+    idx = getLinkIdx(link)
+    if idx == -1:
+        continue
+
+    junctionIdx, junctionName, orientation = None, None, None
+    if link in linkToJunctionInfo:
+        junctionIdx, junctionName, orientation = linkToJunctionInfo[link]
+
     data.append({
-        'link': link, 
+        'id': int(idx),
+        'linkName': link, 
         'inflow': avg(linkIDToInflows[link]) / STEP_LENGTH, 
         'outflow': avg(linkIDToOutflows[link]) / STEP_LENGTH,
         'spawns': avg(linkIDToSpawns[link]) / STEP_LENGTH,
         'despawns': avg(linkIDToDespawns[link]) / STEP_LENGTH,
-        'maxQueueLength': linkIDToMaxQueueLength.get(link, 0)
+        'maxQueueLength': linkToMaxQueueLength.get(link, 0),
+        'junctionId': int(junctionIdx) if junctionIdx is not None else None,
+        'junctionName': junctionName,
+        'orientation': int(orientation) if orientation is not None else None,
     })
 
 df = pd.DataFrame(data)
