@@ -7,7 +7,7 @@ import pandas as pd
 
 ######## CONFIG ########
 
-STEP_LENGTH = 0.1  # seconds
+STEP_LENGTH = 1  # seconds
 CYCLE_LENGTH = 60  # seconds
 
 VEHICLE_LENGTH = 5 # meters
@@ -32,6 +32,22 @@ for laneid in traci.lane.getIDList():
         linkIDToMaxQueueLength[link] = 1 + (length - VEHICLE_LENGTH) / (VEHICLE_LENGTH + VEHICLE_MIN_GAP)
     else:
         linkIDToMaxQueueLength[link] = 0
+
+trafficlights = []
+
+for tlsid in traci.trafficlight.getIDList():
+    junction = { "id": len(trafficlights) }
+
+    for ls in traci.trafficlight.getControlledLinks(tlsid):
+        for incoming_link, _, _ in ls:     
+            incoming_link = incoming_link.rsplit('_', 1)[0]
+
+            junction[int(traci.edge.getAngle(incoming_link))] = incoming_link
+    
+    trafficlights.append(junction)
+
+df = pd.DataFrame(trafficlights)
+df.to_csv("junctions.csv", index=False)
 
 packVehicleData = []
 packTLSData = []
