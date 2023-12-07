@@ -120,6 +120,14 @@ class Traffic:
 
         print('dynamics constraint added')
 
+    def add_parallel_light_constraint(self, prog, x, g):
+        # TODO: add constraint that parallel lights have equal green times
+        pass
+
+    def add_perpindicular_light_constraint(self, prog, x, g):
+        # TODO: add constraint that perpindecular lights add up to cycle time
+        pass
+
     def add_cost(self, prog, x, g):
         # quadratic cost on the state and input
         for k in range(self.num_steps - 1): 
@@ -136,7 +144,6 @@ class Traffic:
         num_steps = self.num_steps
         n_x = self.N
         n_g = self.N
-        T = self.T
 
         # Initialize mathematical program and decalre decision variables
         prog = MathematicalProgram()
@@ -152,6 +159,8 @@ class Traffic:
         self.add_initial_state_constraint(prog, x, x_current)
         self.add_input_saturation_constraint(prog, x, g)
         self.add_dynamics_constraint(prog, x, g)
+        self.add_parallel_light_constraint(prog, x, g)
+        self.add_perpindicular_light_constraint(prog, x, g)
         self.add_cost(prog, x, g)
 
         # Solve the QP
