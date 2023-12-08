@@ -3,56 +3,83 @@ import time
 import pandas as pd
 
 
-csv_file = "greenTimeInputs.csv"  
-
-# The keys are traffic light IDs, and the values are the corresponding green durations
-df = pd.read_csv(csv_file)
-
-# Each traffic light will have its own phase index, elapsed time, and green duration
-# Read CSV and create a dictionary with additional control keys
-tflControls = {tfl_id: {'greenTime1': row['greenTime1'], 'greenTime2': row['greenTime2'], 
-                        'currentPhaseIndex': 0, 'elapsedTime': 0}
-               for tfl_id, row in df.set_index('tfl_id').iterrows()}
-
-
-# Use sumo-gui to run GUI simulation, just sumo without GUI
-sumoCmd = ["sumo", "-c", "grid.sumocfg"]
-traci.start(sumoCmd)
-
+linkControls = {}
+junctionPhases = {}
 vehicleEmissions = {}
 vehicleWaitingTimes = {}
 maxVehicleWaitingTimes = {}
 maxWaitingTimeDuringPeriod = {}
 
+default_green_time = 42  
 yellowDuration = 3
+state = ' '
 
-trafficPhases = ["GGgrrrGGgrrr", "yyyrrryyyrrr", "rrrGGgrrrGGg", "rrryyyrrryyy"]
+def generatePhaseString(phaseIndex):
+    trafficPhases = ["GGgrrrGGgrrr", "yyyrrryyyrrr", "rrrGGgrrrGGg", "rrryyyrrryyy"]
+    return trafficPhases[phaseIndex]
+
+# === IMPORTING CSV ===
+
+csv_file = "greenLinkTimes.csv"  
+
+# The keys are traffic light IDs, and the values are the corresponding green durations
+df = pd.read_csv(csv_file)
+df = df.dropna(subset=['junctionId', 'junctionName', 'greenTime'])
+
+
+for _, row in df.iterrows():
+    link_name = row['linkName']
+    junction_name = row['junctionName']
+    orientation = row['orientation']
+    green_time = row['greenTime']
+    
+    linkControls[link_name] = {'junctionName': junction_name, 'orientation': orientation, 
+                               'greenTime': green_time, 'elapsedTime': 0, 'currentPhase': 'G'}
+
+    if junction_name not in junctionPhases:
+        junctionPhases[junction_name] = {'greenTimes': {}, 'currentPhaseIndex': 0, 'elapsedTime': 0}
+    junctionPhases[junction_name]['greenTimes'][orientation] = green_time
+
+
+# === BOOTING UP SUMO ===
+# Use sumo-gui to run GUI simulation, just sumo without GUI
+sumoCmd = ["sumo-gui", "-c", "grid.sumocfg"]
+traci.start(sumoCmd)
+
 
 currentPhaseIndex = 0
 elapsedTime = 0  # Time elapsed in the current phase in seconds
 
 activeVehicles = set()
 
+# === SIMULATION LOOP ===
 while traci.simulation.getMinExpectedNumber() > 0:
     traci.simulationStep()
-    
 
-    for tfl_id, control in tflControls.items():
-        # Determine the duration for the current phase
-        if control['currentPhaseIndex'] in [0, 2]:  # Green phases
-            phaseDuration = control['greenTime1'] if control['currentPhaseIndex'] == 0 else control['greenTime2']
-        else:  # Yellow phases
-            phaseDuration = yellowDuration
+    # TRAFFIC LIGHT CONTROL
+    for junction, phases in junctionPhases.items():
+        currentPhaseIndex = phases['currentPhaseIndex']
+        phaseString = generatePhaseString(currentPhaseIndex)
+        traci.trafficlight.setRedYellowGreenState(junction, phaseString)
 
-        # Check if it's time to change the phase
-        if control['elapsedTime'] >= phaseDuration:
-            newPhaseIndex = (control['currentPhaseIndex'] + 1) % len(trafficPhases)
-            traci.trafficlight.setRedYellowGreenState(tfl_id, trafficPhases[newPhaseIndex])
-            control['currentPhaseIndex'] = newPhaseIndex
-            control['elapsedTime'] = 0
+        totalCycleTime = sum(phases['greenTimes'].values()) + yellowDuration * len(phases['greenTimes'])
+
+        if currentPhaseIndex % 2 == 0:  # Green phase
+            if phases['elapsedTime'] >= phases['greenTimes'][currentPhaseIndex // 2]:
+                phases['elapsedTime'] = 0
+                phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 4
+        else:  # Yellow phase
+            if phases['elapsedTime'] >= yellowDuration:
+                phases['elapsedTime'] = 0
+                phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 4
+
+        if phases['elapsedTime'] < totalCycleTime:
+            phases['elapsedTime'] += 1
         else:
-            control['elapsedTime'] += 1
-
+            phases['elapsedTime'] = 0  # Reset cycle
+        
+    # DATA TRACKING
+        
         #print(f"Traffic Light {tfl_id}, Current Phase Index: {control['currentPhaseIndex']}")
         currentVehicles = set(traci.vehicle.getIDList())
         # Update the set of active vehicles
@@ -60,7 +87,6 @@ while traci.simulation.getMinExpectedNumber() > 0:
         vehiclesEntered = currentVehicles - activeVehicles
         activeVehicles -= vehiclesLeft
         activeVehicles |= vehiclesEntered
-        
 
         for vehID in activeVehicles:
             # Update total emissions for each vehicle
