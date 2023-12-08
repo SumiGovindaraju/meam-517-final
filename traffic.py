@@ -38,7 +38,7 @@ class Traffic:
     # function for getting the correction number of lights and links
     def get_N(self):
         # remove the lines with the ":" in them
-        self.df = self.df[~self.df.iloc[:,0].str.contains(":")]
+        # self.df = self.df[~self.df.iloc[:,0].str.contains(":")]
         self.df.reset_index(drop=True, inplace=True)
 
         # getting the number of lights to control
@@ -58,7 +58,7 @@ class Traffic:
             # leaving the link
             u_z = self.df['outflow'][z]
 
-            self.B[z][z] = (q_z - u_z) # Eqn. 3
+            self.B[z][z] = (q_z - u_z) * self.T / self.C # Eqn. 3
 
             # Q cost on maximum queue length
             self.Q[z][z] = 1 / self.df['maxQueueLength'][z]
@@ -85,10 +85,10 @@ class Traffic:
         K, optimal_cost = DiscreteTimeLinearQuadraticRegulator(A, B, Q, R)
 
         # getting the greentime
-        g_current = -K @ x_current
+        g_current = np.reshape(-K @ x_current, (self.N,))
 
         # returns gains along with corresponding link ordering
-        return g_current, self.df['link'] # very finnicky, some values are returning negative, need to fix the cost function or the dynamics. Also adjust the scaling with a time cycle
+        return g_current, self.df['linkName'] # very finnicky, some values are returning negative, need to fix the cost function or the dynamics. Also adjust the scaling with a time cycle
     
     def add_initial_state_constraint(self, prog, x, x_current):
         # initial state constraint
@@ -168,7 +168,7 @@ class Traffic:
         result = solver.Solve(prog)
         g_mpc = result.GetSolution(g[0])
 
-        return g_mpc, self.df['link']
+        return g_mpc, self.df['linkName']
 
 
 if __name__ == "__main__":
@@ -180,5 +180,4 @@ if __name__ == "__main__":
     print("LQR RESULT: ", g_lqr)
     g_mpc, link_list = traffic.compute_MPC_feedback(x_current)
     print("MPC RESULT: ", g_mpc)
-    print(sum(g_mpc))
 
