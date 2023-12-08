@@ -61,7 +61,7 @@ class Traffic:
             self.B[z][z] = (q_z - u_z) * self.T / self.C # Eqn. 3
 
             # Q cost on maximum queue length
-            self.Q[z][z] = 1 / self.df['maxQueueLength'][z]
+            self.Q[z][z] =10* 1 / self.df['maxQueueLength'][z]
 
             # R cost on maximum green time (ie. cycle time)
             self.R[z][z] = 1 / self.C
