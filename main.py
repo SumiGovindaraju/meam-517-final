@@ -119,13 +119,10 @@ active_vehicles = []
 previous_active_vehicles = []
 
 def reset_dynamics_data_structs():
-    vehToLinkIDMap.clear()
     linkIDToInflows.clear()
     linkIDToOutflows.clear()
     linkIDToSpawns.clear()
     linkIDToDespawns.clear()
-    active_vehicles.clear()
-    previous_active_vehicles.clear()
 
 # Default linkToFlows
 linkToFlows = pd.read_csv(CONFIG_FILE)
@@ -162,7 +159,7 @@ for i in range(MAX_CYCLES):
         reset_dynamics_data_structs()
         linkToFlows = pd.DataFrame(data)
         traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DURATION, time_horizon=TIME_HORIZON)
-    
+
     # compute state and MPC feedback
     x = np.zeros((traffic.N, 1))
     for vehid in active_vehicles:
@@ -201,6 +198,8 @@ for i in range(MAX_CYCLES):
         tmpLinkToSpawns = {}
         tmpLinkToDespawns = {}
 
+        active_vehicles = traci.vehicle.getIDList()
+
         for vehid in active_vehicles:
             link = traci.vehicle.getRoadID(vehid)
 
@@ -222,6 +221,8 @@ for i in range(MAX_CYCLES):
         for vehid in set(previous_active_vehicles) - set(active_vehicles):
             link = vehToLinkIDMap[vehid]
             tmpLinkToDespawns[link] = tmpLinkToDespawns.get(link, 0) + 1
+
+        previous_active_vehicles = active_vehicles
 
         for link in traci.edge.getIDList():
             if link not in linkIDToInflows:
