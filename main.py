@@ -16,6 +16,8 @@ VEHICLE_LENGTH = 5  # meters
 VEHICLE_MIN_GAP = 2.5  # meters
 
 SHOW_GUI = False  # set to true if you want to show the GUI
+
+YELLOW_DURATION = 3
 ######## ###### ########
 
 import csv
@@ -31,6 +33,10 @@ def avg(ls):
 
 def trim_link_name(link):
     return link.rsplit('_', 1)[0]
+
+def generatePhaseString(phaseIndex):
+    trafficPhases = ["GGgrrrGGgrrr", "yyyrrryyyrrr", "rrrGGgrrrGGg", "rrryyyrrryyy"]
+    return trafficPhases[phaseIndex]
 ######## #### ########
 
 ######## EDGE/JUNCTION INDEXING ########
@@ -121,7 +127,8 @@ def reset_dynamics_data_structs():
     previous_active_vehicles.clear()
 
 # Default linkToFlows
-traffic = Traffic(sumo_file=CONFIG_FILE, cycle_time=CYCLE_LENGTH)
+linkToFlows = pd.read_csv(CONFIG_FILE)
+traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH)
 
 logged_data = []
 
@@ -162,21 +169,25 @@ for i in range(MAX_CYCLES):
         x[getLinkIdx(link)] += 1
 
     u, _ = traffic.compute_MPC_feedback(x)
-    print(u)
 
-    junctionToActuation = {}  # junction -> (switch time, first orientation)
-    for tlsid in traci.trafficlight.getIDList():
-        for ls in traci.trafficlight.getControlledLinks(tlsid):
-            for incoming_link, _, _ in ls:
-                incoming_link = trim_link_name(incoming_link)
-                _, junction, orientation = linkToJunctionInfo[incoming_link]
+    linkControls = {}
+    junctionPhases = {}
 
-                if junction not in junctionToActuation:
-                    green_time = u[getLinkIdx(incoming_link)]
-                    if orientation == 1:
-                        green_time = CYCLE_LENGTH - green_time
+    for _, row in linkToFlows.iterrows():
+        junction_name = row['junctionName']
+        if not isinstance(junction_name, str):
+            continue
 
-                    junctionToActuation[junction] = (green_time, 0)
+        link_name = row['linkName']
+        orientation = row['orientation']
+        green_time = u[getLinkIdx(link_name)]
+        
+        linkControls[link_name] = {'junctionName': junction_name, 'orientation': orientation, 
+                                'greenTime': green_time, 'elapsedTime': 0, 'currentPhase': 'G'}
+
+        if junction_name not in junctionPhases:
+            junctionPhases[junction_name] = {'greenTimes': {}, 'currentPhaseIndex': 0, 'elapsedTime': 0}
+        junctionPhases[junction_name]['greenTimes'][orientation] = green_time
 
     # iterate through 1 cycle and apply green time control input into SUMO, while collecting data
     for j in range(int(CYCLE_LENGTH / STEP_LENGTH)):
@@ -227,18 +238,26 @@ for i in range(MAX_CYCLES):
             linkIDToDespawns[link].append(tmpLinkToDespawns.get(link, 0))
         
         # apply controller
-        for tlsid in traci.trafficlight.getIDList():
-            for tl_link_idx, ls in enumerate(traci.trafficlight.getControlledLinks(tlsid)):
-                for incoming_link, _, _ in ls:
-                    incoming_link = trim_link_name(incoming_link)
+        for junction, phases in junctionPhases.items():
+            currentPhaseIndex = phases['currentPhaseIndex']
+            phaseString = generatePhaseString(currentPhaseIndex)
+            traci.trafficlight.setRedYellowGreenState(junction, phaseString)
 
-                    switchTime, firstOrientation = junctionToActuation[junction]
-                    orientation = int(0 if traci.edge.getAngle(incoming_link) % 180 == 0 else 1)
+            totalCycleTime = sum(phases['greenTimes'].values()) + YELLOW_DURATION * len(phases['greenTimes'])
 
-                    green = (t < switchTime and orientation == firstOrientation) or (t >= switchTime and orientation != firstOrientation)
+            if currentPhaseIndex % 2 == 0:  # Green phase
+                if phases['elapsedTime'] >= phases['greenTimes'][currentPhaseIndex // 2]:
+                    phases['elapsedTime'] = 0
+                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 4
+            else:  # Yellow phase
+                if phases['elapsedTime'] >= YELLOW_DURATION:
+                    phases['elapsedTime'] = 0
+                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 4
 
-                    if USE_CONTROLLER:
-                        traci.trafficlight.setLinkState(tlsid, tl_link_idx, 'G' if green else 'R')
+            if phases['elapsedTime'] < totalCycleTime:
+                phases['elapsedTime'] += 1
+            else:
+                phases['elapsedTime'] = 0  # Reset cycle
 
         # TODO: Log some sort of metrics (mean queue length, vehicle speed, emissions, etc.)
 
