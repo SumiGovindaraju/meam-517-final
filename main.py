@@ -9,7 +9,7 @@ DATA_FILE = "sim_data.csv" if not USE_CONTROLLER else "controller_data.csv"
 MAX_CYCLES = 100  # number of cycles to run the simulation
 TIME_HORIZON = 5  # number of cycles between recalibrating dynamics
 
-STEP_LENGTH = 1  # seconds
+STEP_LENGTH = 0.1  # seconds
 CYCLE_LENGTH = 60  # seconds
 
 VEHICLE_LENGTH = 5  # meters
@@ -255,7 +255,7 @@ for i in range(MAX_CYCLES):
                     phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 4
 
             if phases['elapsedTime'] < totalCycleTime:
-                phases['elapsedTime'] += 1
+                phases['elapsedTime'] += STEP_LENGTH
             else:
                 phases['elapsedTime'] = 0  # Reset cycle
 
