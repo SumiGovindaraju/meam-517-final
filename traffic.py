@@ -5,11 +5,14 @@ from pydrake.solvers import MathematicalProgram, Solve, OsqpSolver
 import pydrake.symbolic as sym
 
 class Traffic:
-    def __init__(self, sumo_file):
+    def __init__(self, sumo_df=None, sumo_file=None):
 
         # SUMO file
         self.sumo_file = sumo_file
-        self.df = pd.read_csv(self.sumo_file)
+        self.df = pd.read_csv(self.sumo_file) if sumo_file is not None else sumo_df
+
+        if self.df is None:
+            raise "Dynamics DF is None"
 
         # initial state
         self.N = self.get_N() # number of links and controlling lights
@@ -172,7 +175,7 @@ class Traffic:
 
 
 if __name__ == "__main__":
-    traffic = Traffic("linkToFlows.csv")
+    traffic = Traffic(sumo_file="linkToFlows.csv")
     traffic.parse_sumo()
     print(traffic.B)
     x_current = np.ones((traffic.N, 1))
