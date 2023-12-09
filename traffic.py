@@ -5,7 +5,7 @@ from pydrake.solvers import MathematicalProgram, Solve, OsqpSolver
 import pydrake.symbolic as sym
 
 class Traffic:
-    def __init__(self, sumo_df=None, sumo_file=None):
+    def __init__(self, sumo_df=None, sumo_file=None, cycle_time=60):
 
         # SUMO file
         self.sumo_file = sumo_file
@@ -20,7 +20,7 @@ class Traffic:
         self.xdot_0 = np.zeros(self.N)
 
         # traffic cycle and timing conditions
-        self.C = 60 # length of a traffic cycle [s]
+        self.C = cycle_time # length of a traffic cycle [s]
         self.num_steps = 60 # number of steps in a cycle
         self.T = self.C / self.num_steps # time step [s]
         self.num_runs = 100 # number of cycles to simulate
@@ -98,14 +98,14 @@ class Traffic:
         # print(x_current.shape)
         # print(x[0].shape)
         prog.AddBoundingBoxConstraint(x_current, x_current, x[0])
-        print('intial state constraint added')
+        # print('intial state constraint added')
 
     def add_input_saturation_constraint(self, prog, x, g):
         # limits on green time
         for i in range(self.num_steps-1):
             prog.AddBoundingBoxConstraint(self.C / 10,  self.C, g[i])
         
-        print('input saturation constraint added')
+        # print('input saturation constraint added')
 
 
     def add_dynamics_constraint(self, prog, x, g):
@@ -121,7 +121,7 @@ class Traffic:
             for i in range(self.N):
                 prog.AddLinearEqualityConstraint(x_dyn_kp1[i] == x_e_kp1[i])
 
-        print('dynamics constraint added')
+        # print('dynamics constraint added')
 
     def add_parallel_light_constraint(self, prog, x, g):
         # TODO: add constraint that parallel lights have equal green times
@@ -139,7 +139,7 @@ class Traffic:
             x_e = x[k] - x_d
             g_e = g[k] - g_d
             prog.AddQuadraticCost(x_e.T @ self.Q @ x_e + g_e.T @ self.R @ g_e)
-        print('cost added')
+        # print('cost added')
 
     def compute_MPC_feedback(self, x_current, use_clf=False):
 
