@@ -9,7 +9,7 @@ DATA_FILE = "sim_data.csv" if not USE_CONTROLLER else "controller_data.csv"
 MAX_CYCLES = 100  # number of cycles to run the simulation
 TIME_HORIZON = 5  # number of cycles between recalibrating dynamics
 
-STEP_LENGTH = 0.1  # seconds
+STEP_LENGTH = 0.01  # seconds
 CYCLE_LENGTH = 60  # seconds
 
 VEHICLE_LENGTH = 5  # meters
@@ -17,7 +17,8 @@ VEHICLE_MIN_GAP = 2.5  # meters
 
 SHOW_GUI = False  # set to true if you want to show the GUI
 
-YELLOW_DURATION = 3
+YELLOW_DURATION = 5  # seconds
+ALL_RED_DUATION = 2  # seconds
 ######## ###### ########
 
 import csv
@@ -128,7 +129,7 @@ def reset_dynamics_data_structs():
 
 # Default linkToFlows
 linkToFlows = pd.read_csv(CONFIG_FILE)
-traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH)
+traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DUATION)
 
 logged_data = []
 
@@ -160,7 +161,7 @@ for i in range(MAX_CYCLES):
 
         reset_dynamics_data_structs()
         linkToFlows = pd.DataFrame(data)
-        traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH)
+        traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DUATION)
     
     # compute state and MPC feedback
     x = np.zeros((traffic.N, 1))
@@ -168,19 +169,19 @@ for i in range(MAX_CYCLES):
         link = traci.vehicle.getRoadID(vehid)
         x[getLinkIdx(link)] += 1
 
-    u, _ = traffic.compute_MPC_feedback(x)
+    u = traffic.compute_MPC_feedback(x)
 
     linkControls = {}
     junctionPhases = {}
 
-    for _, row in linkToFlows.iterrows():
+    for _, row in u.iterrows():
         junction_name = row['junctionName']
         if not isinstance(junction_name, str):
             continue
 
         link_name = row['linkName']
         orientation = row['orientation']
-        green_time = u[getLinkIdx(link_name)]
+        green_time = row['green time']
         
         linkControls[link_name] = {'junctionName': junction_name, 'orientation': orientation, 
                                 'greenTime': green_time, 'elapsedTime': 0, 'currentPhase': 'G'}

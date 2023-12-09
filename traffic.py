@@ -5,7 +5,7 @@ from pydrake.solvers import MathematicalProgram, Solve, OsqpSolver
 import pydrake.symbolic as sym
 
 class Traffic:
-    def __init__(self, sumo_df=None, sumo_file=None, cycle_time=60):
+    def __init__(self, sumo_df=None, sumo_file=None, cycle_time=60, yellow_time=5, all_red_time=2):
 
         # SUMO file
         self.sumo_file = sumo_file
@@ -24,8 +24,8 @@ class Traffic:
         self.num_steps = 60 # number of steps in a cycle
         self.T = self.C / self.num_steps # time step [s]
         self.num_runs = 100 # number of cycles to simulate
-        self.yellow_time = 5 # time for yellow light [s]
-        self.all_red_time = 2 # time for all red light [s]
+        self.yellow_time = yellow_time # time for yellow light [s]
+        self.all_red_time = all_red_time # time for all red light [s]
 
         # dynamics constants (extracted from SUMO)
         self.A = np.eye(self.N) # identity matrix on queue length
