@@ -66,7 +66,7 @@ class Traffic:
             self.B[z][z] = (q_z - u_z) * self.T / self.C # Eqn. 3
 
             # Q cost on maximum queue length
-            self.Q[z][z] =10* 1 / self.df['maxQueueLength'][z]
+            self.Q[z][z] =10 * 1 / self.df['maxQueueLength'][z]
 
             # R cost on maximum green time (ie. cycle time)
             self.R[z][z] = 1 / self.C
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     print(traffic.B)
     x_current = np.ones((traffic.N, 1))
     lqr_df = traffic.compute_LQR_feedback(x_current)
-    print("LQR RESULT: ", lqr_df['green time'])
+    print("LQR RESULT: \n", lqr_df['green time'])
     mpc_df = traffic.compute_MPC_feedback(x_current)
-    print("MPC RESULT: ", mpc_df['green time'])
+    print("MPC RESULT: \n", mpc_df['green time'])
 
