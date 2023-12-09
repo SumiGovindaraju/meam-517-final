@@ -24,6 +24,8 @@ class Traffic:
         self.num_steps = 60 # number of steps in a cycle
         self.T = self.C / self.num_steps # time step [s]
         self.num_runs = 100 # number of cycles to simulate
+        self.yellow_time = 5 # time for yellow light [s]
+        self.all_red_time = 2 # time for all red light [s]
 
         # dynamics constants (extracted from SUMO)
         self.A = np.eye(self.N) # identity matrix on queue length
@@ -75,7 +77,7 @@ class Traffic:
 
     # Eqn. 6, dynamics of the system
     def x_kp1(self, x_k, g_k):
-        return self.A @ x_k + self.B @ g_k + self.T * (self.s_k - self.d_k)
+        return self.A @ x_k + self.T / self.C * self.B @ g_k + self.T * (self.s_k - self.d_k)
     
     # standard LQR coming from linear dynamics and quadratic cost
     def compute_LQR_feedback(self, x_current):
@@ -91,21 +93,23 @@ class Traffic:
         g_current = np.reshape(-K @ x_current, (self.N,))
 
         # returns gains along with corresponding link ordering
-        return g_current, self.df['linkName'] # very finnicky, some values are returning negative, need to fix the cost function or the dynamics. Also adjust the scaling with a time cycle
+        lqr_df = self.df.copy()
+        lqr_df['green time'] = np.around(g_current, 2)
+        return lqr_df # very finnicky, some values are returning negative, need to fix the cost function or the dynamics. Also adjust the scaling with a time cycle
     
     def add_initial_state_constraint(self, prog, x, x_current):
         # initial state constraint
         # print(x_current.shape)
         # print(x[0].shape)
         prog.AddBoundingBoxConstraint(x_current, x_current, x[0])
-        # print('intial state constraint added')
+        print('intial state constraint added')
 
     def add_input_saturation_constraint(self, prog, x, g):
         # limits on green time
         for i in range(self.num_steps-1):
-            prog.AddBoundingBoxConstraint(self.C / 10,  self.C, g[i])
+            prog.AddBoundingBoxConstraint(0,  self.C - 2 * (self.all_red_time + self.yellow_time), g[i])
         
-        # print('input saturation constraint added')
+        print('input saturation constraint added')
 
 
     def add_dynamics_constraint(self, prog, x, g):
@@ -121,25 +125,61 @@ class Traffic:
             for i in range(self.N):
                 prog.AddLinearEqualityConstraint(x_dyn_kp1[i] == x_e_kp1[i])
 
-        # print('dynamics constraint added')
+        print('dynamics constraint added')
 
     def add_parallel_light_constraint(self, prog, x, g):
-        # TODO: add constraint that parallel lights have equal green times
-        pass
+
+        # get all possible junctionIds from the dataframe
+        junction_ids = self.df['junctionId'].unique()
+
+        # remove nan from the list
+        junction_ids = [x for x in junction_ids if str(x) != 'nan']
+
+        for id in junction_ids:
+
+            # get the list of all rows with the id and orientation 0.0 or 1.0
+            idx_with_0 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 0.0)].tolist()
+            idx_with_1 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 1.0)].tolist()
+
+            for k in range(self.num_steps-1):
+                # all 0 direction lights must be equal
+                prog.AddLinearEqualityConstraint(g[k][idx_with_0[0]] == g[k][idx_with_0[1]])
+
+                # all 1 direction lights must be equal
+                prog.AddLinearEqualityConstraint(g[k][idx_with_1[0]] == g[k][idx_with_1[1]])
+                            
+        print('parallel light constraint added')
 
     def add_perpindicular_light_constraint(self, prog, x, g):
-        # TODO: add constraint that perpindecular lights add up to cycle time
-        pass
+
+        # get all possible junctionIds from the dataframe
+        junction_ids = self.df['junctionId'].unique()
+
+        # remove nan from the list
+        junction_ids = [x for x in junction_ids if str(x) != 'nan']
+
+        for id in junction_ids:
+
+            # get the list of all rows with the id and orientation 0.0 or 1.0
+            idx_with_0 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 0.0)].tolist()
+            idx_with_1 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 1.0)].tolist()
+
+            for k in range(self.num_steps-1):
+                # sum of adjacent lights must be equal to the total possible green time
+                prog.AddLinearEqualityConstraint(g[k][idx_with_0[0]] + g[k][idx_with_1[0]] == self.C - 2 * (self.all_red_time + self.yellow_time))
+                prog.AddLinearEqualityConstraint(g[k][idx_with_0[1]] + g[k][idx_with_1[1]] == self.C - 2 * (self.all_red_time + self.yellow_time))
+                            
+        print('perpindicular light constraint added')
 
     def add_cost(self, prog, x, g):
         # quadratic cost on the state and input
         for k in range(self.num_steps - 1): 
             x_d = np.zeros(self.N)
-            g_d = self.C / 2 * np.ones(self.N) # don't want to deviate too much from 50/50 split
+            g_d = np.zeros(self.N) #+ self.C / 2 * np.ones(self.N) # don't want to deviate too much from 50/50 split
             x_e = x[k] - x_d
             g_e = g[k] - g_d
             prog.AddQuadraticCost(x_e.T @ self.Q @ x_e + g_e.T @ self.R @ g_e)
-        # print('cost added')
+        print('cost added')
 
     def compute_MPC_feedback(self, x_current, use_clf=False):
 
@@ -171,7 +211,9 @@ class Traffic:
         result = solver.Solve(prog)
         g_mpc = result.GetSolution(g[0])
 
-        return g_mpc, self.df['linkName']
+        mpc_df = self.df.copy()
+        mpc_df['green time'] = np.around(g_mpc, 2)
+        return mpc_df
 
 
 if __name__ == "__main__":
@@ -179,8 +221,8 @@ if __name__ == "__main__":
     traffic.parse_sumo()
     print(traffic.B)
     x_current = np.ones((traffic.N, 1))
-    g_lqr, link_list = traffic.compute_LQR_feedback(x_current)
-    print("LQR RESULT: ", g_lqr)
-    g_mpc, link_list = traffic.compute_MPC_feedback(x_current)
-    print("MPC RESULT: ", g_mpc)
+    lqr_df = traffic.compute_LQR_feedback(x_current)
+    print("LQR RESULT: ", lqr_df['green time'])
+    mpc_df = traffic.compute_MPC_feedback(x_current)
+    print("MPC RESULT: ", mpc_df['green time'])
 
