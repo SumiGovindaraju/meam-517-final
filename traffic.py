@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import numpy as np
 import pandas as pd
 from pydrake.systems.controllers import DiscreteTimeLinearQuadraticRegulator
@@ -5,7 +7,7 @@ from pydrake.solvers import MathematicalProgram, Solve, OsqpSolver
 import pydrake.symbolic as sym
 
 class Traffic:
-    def __init__(self, sumo_df=None, sumo_file=None, cycle_time=60, yellow_time=5, all_red_time=2):
+    def __init__(self, sumo_df=None, sumo_file=None, cycle_time=60, time_horizon=5, yellow_time=5, all_red_time=2):
 
         # SUMO file
         self.sumo_file = sumo_file
@@ -21,8 +23,7 @@ class Traffic:
 
         # traffic cycle and timing conditions
         self.C = cycle_time # length of a traffic cycle [s]
-        self.num_steps = 60 # number of steps in a cycle
-        self.T = self.C / self.num_steps # time step [s]
+        self.T = time_horizon # number of cycles
         self.num_runs = 100 # number of cycles to simulate
         self.yellow_time = yellow_time # time for yellow light [s]
         self.all_red_time = all_red_time # time for all red light [s]
@@ -66,7 +67,7 @@ class Traffic:
             self.B[z][z] = (q_z - u_z) * self.T / self.C # Eqn. 3
 
             # Q cost on maximum queue length
-            self.Q[z][z] =10 * 1 / self.df['maxQueueLength'][z]
+            self.Q[z][z] = 100 * 1 / self.df['maxQueueLength'][z]
 
             # R cost on maximum green time (ie. cycle time)
             self.R[z][z] = 1 / self.C
@@ -102,19 +103,19 @@ class Traffic:
         # print(x_current.shape)
         # print(x[0].shape)
         prog.AddBoundingBoxConstraint(x_current, x_current, x[0])
-        print('intial state constraint added')
+        # print('intial state constraint added')
 
     def add_input_saturation_constraint(self, prog, x, g):
         # limits on green time
-        for i in range(self.num_steps-1):
+        for i in range(self.T):
             prog.AddBoundingBoxConstraint(0,  self.C - 2 * (self.all_red_time + self.yellow_time), g[i])
         
-        print('input saturation constraint added')
+        # print('input saturation constraint added')
 
 
     def add_dynamics_constraint(self, prog, x, g):
         # adding dynamics constraints
-        for k in range(self.num_steps-1):
+        for k in range(self.T - 1):
             x_e = x[k]
             g_e = g[k]
             x_e_kp1 = x[k+1]
@@ -125,7 +126,7 @@ class Traffic:
             for i in range(self.N):
                 prog.AddLinearEqualityConstraint(x_dyn_kp1[i] == x_e_kp1[i])
 
-        print('dynamics constraint added')
+        # print('dynamics constraint added')
 
     def add_parallel_light_constraint(self, prog, x, g):
 
@@ -141,14 +142,14 @@ class Traffic:
             idx_with_0 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 0.0)].tolist()
             idx_with_1 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 1.0)].tolist()
 
-            for k in range(self.num_steps-1):
+            for k in range(self.T):
                 # all 0 direction lights must be equal
                 prog.AddLinearEqualityConstraint(g[k][idx_with_0[0]] == g[k][idx_with_0[1]])
 
                 # all 1 direction lights must be equal
                 prog.AddLinearEqualityConstraint(g[k][idx_with_1[0]] == g[k][idx_with_1[1]])
                             
-        print('parallel light constraint added')
+        # print('parallel light constraint added')
 
     def add_perpindicular_light_constraint(self, prog, x, g):
 
@@ -164,38 +165,36 @@ class Traffic:
             idx_with_0 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 0.0)].tolist()
             idx_with_1 = self.df.index[(self.df['junctionId'] == id) & (self.df['orientation'] == 1.0)].tolist()
 
-            for k in range(self.num_steps-1):
+            for k in range(self.T):
                 # sum of adjacent lights must be equal to the total possible green time
                 prog.AddLinearEqualityConstraint(g[k][idx_with_0[0]] + g[k][idx_with_1[0]] == self.C - 2 * (self.all_red_time + self.yellow_time))
                 prog.AddLinearEqualityConstraint(g[k][idx_with_0[1]] + g[k][idx_with_1[1]] == self.C - 2 * (self.all_red_time + self.yellow_time))
                             
-        print('perpindicular light constraint added')
+        # print('perpindicular light constraint added')
 
     def add_cost(self, prog, x, g):
         # quadratic cost on the state and input
-        for k in range(self.num_steps - 1): 
+        for k in range(self.T): 
             x_d = np.zeros(self.N)
             g_d = np.zeros(self.N) #+ self.C / 2 * np.ones(self.N) # don't want to deviate too much from 50/50 split
             x_e = x[k] - x_d
             g_e = g[k] - g_d
-            prog.AddQuadraticCost(x_e.T @ self.Q @ x_e + g_e.T @ self.R @ g_e)
-        print('cost added')
+            prog.AddQuadraticCost(x_e.T @ self.Q @ x_e)
+        # print('cost added')
 
     def compute_MPC_feedback(self, x_current, use_clf=False):
 
         # Parameters for the QP
-        num_steps = self.num_steps
+        T = self.T
         n_x = self.N
         n_g = self.N
 
         # Initialize mathematical program and decalre decision variables
         prog = MathematicalProgram()
-        x = np.zeros((num_steps, n_x), dtype="object")
-        g = np.zeros((num_steps, n_g), dtype="object")
-        for i in range(num_steps):
+        x = np.zeros((T, n_x), dtype="object")
+        g = np.zeros((T, n_g), dtype="object")
+        for i in range(T):
             x[i] = prog.NewContinuousVariables(n_x, "x_" + str(i))
-
-        for i in range(num_steps):
             g[i] = prog.NewContinuousVariables(n_g, "g_" + str(i))
 
         # Add constraints and cost

@@ -129,7 +129,7 @@ def reset_dynamics_data_structs():
 
 # Default linkToFlows
 linkToFlows = pd.read_csv(CONFIG_FILE)
-traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DURATION)
+traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DURATION, time_horizon=TIME_HORIZON)
 
 logged_data = []
 
@@ -161,7 +161,7 @@ for i in range(MAX_CYCLES):
 
         reset_dynamics_data_structs()
         linkToFlows = pd.DataFrame(data)
-        traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DURATION)
+        traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DURATION, time_horizon=TIME_HORIZON)
     
     # compute state and MPC feedback
     x = np.zeros((traffic.N, 1))
