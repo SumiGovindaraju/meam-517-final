@@ -18,7 +18,7 @@ VEHICLE_MIN_GAP = 2.5  # meters
 SHOW_GUI = False  # set to true if you want to show the GUI
 
 YELLOW_DURATION = 5  # seconds
-ALL_RED_DUATION = 2  # seconds
+ALL_RED_DURATION = 2  # seconds
 ######## ###### ########
 
 import csv
@@ -36,7 +36,7 @@ def trim_link_name(link):
     return link.rsplit('_', 1)[0]
 
 def generatePhaseString(phaseIndex):
-    trafficPhases = ["GGgrrrGGgrrr", "yyyrrryyyrrr", "rrrGGgrrrGGg", "rrryyyrrryyy"]
+    trafficPhases = ["GGgrrrGGgrrr", "yyyrrryyyrrr", "rrrrrrrrrrrr", "rrrGGgrrrGGg", "rrryyyrrryyy", "rrrrrrrrrrrr"]
     return trafficPhases[phaseIndex]
 ######## #### ########
 
@@ -129,7 +129,7 @@ def reset_dynamics_data_structs():
 
 # Default linkToFlows
 linkToFlows = pd.read_csv(CONFIG_FILE)
-traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DUATION)
+traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DURATION)
 
 logged_data = []
 
@@ -161,7 +161,7 @@ for i in range(MAX_CYCLES):
 
         reset_dynamics_data_structs()
         linkToFlows = pd.DataFrame(data)
-        traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DUATION)
+        traffic = Traffic(sumo_df=linkToFlows, cycle_time=CYCLE_LENGTH, yellow_time=YELLOW_DURATION, all_red_time=ALL_RED_DURATION)
     
     # compute state and MPC feedback
     x = np.zeros((traffic.N, 1))
@@ -244,18 +244,20 @@ for i in range(MAX_CYCLES):
             phaseString = generatePhaseString(currentPhaseIndex)
             traci.trafficlight.setRedYellowGreenState(junction, phaseString)
 
-            totalCycleTime = sum(phases['greenTimes'].values()) + YELLOW_DURATION * len(phases['greenTimes'])
-
-            if currentPhaseIndex % 2 == 0:  # Green phase
-                if phases['elapsedTime'] >= phases['greenTimes'][currentPhaseIndex // 2]:
+            if currentPhaseIndex % 3 == 0:  # Green phase
+                if phases['elapsedTime'] >= phases['greenTimes'][currentPhaseIndex // 3]:
                     phases['elapsedTime'] = 0
-                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 4
-            else:  # Yellow phase
+                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
+            elif currentPhaseIndex % 3 == 1:  # Yellow phase
                 if phases['elapsedTime'] >= YELLOW_DURATION:
                     phases['elapsedTime'] = 0
-                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 4
+                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
+            else:  # All Red phase
+                if phases['elapsedTime'] >= ALL_RED_DURATION:
+                    phases['elapsedTime'] = 0
+                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
 
-            if phases['elapsedTime'] < totalCycleTime:
+            if phases['elapsedTime'] < CYCLE_LENGTH:
                 phases['elapsedTime'] += STEP_LENGTH
             else:
                 phases['elapsedTime'] = 0  # Reset cycle
