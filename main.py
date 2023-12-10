@@ -9,7 +9,7 @@ DATA_FILE = "sim_data.csv" if not USE_CONTROLLER else "controller_data.csv"
 MAX_CYCLES = 100  # number of cycles to run the simulation
 TIME_HORIZON = 5  # number of cycles between recalibrating dynamics
 
-STEP_LENGTH = 0.01  # seconds
+STEP_LENGTH = 0.1  # seconds
 CYCLE_LENGTH = 60  # seconds
 
 VEHICLE_LENGTH = 5  # meters
@@ -240,30 +240,43 @@ for i in range(MAX_CYCLES):
             linkIDToDespawns[link].append(tmpLinkToDespawns.get(link, 0))
         
         # apply controller
-        for junction, phases in junctionPhases.items():
-            currentPhaseIndex = phases['currentPhaseIndex']
-            phaseString = generatePhaseString(currentPhaseIndex)
-            traci.trafficlight.setRedYellowGreenState(junction, phaseString)
+        if USE_CONTROLLER:
+            for junction, phases in junctionPhases.items():
+                currentPhaseIndex = phases['currentPhaseIndex']
+                phaseString = generatePhaseString(currentPhaseIndex)
+                traci.trafficlight.setRedYellowGreenState(junction, phaseString)
 
-            if currentPhaseIndex % 3 == 0:  # Green phase
-                if phases['elapsedTime'] >= phases['greenTimes'][currentPhaseIndex // 3]:
-                    phases['elapsedTime'] = 0
-                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
-            elif currentPhaseIndex % 3 == 1:  # Yellow phase
-                if phases['elapsedTime'] >= YELLOW_DURATION:
-                    phases['elapsedTime'] = 0
-                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
-            else:  # All Red phase
-                if phases['elapsedTime'] >= ALL_RED_DURATION:
-                    phases['elapsedTime'] = 0
-                    phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
+                if currentPhaseIndex % 3 == 0:  # Green phase
+                    if phases['elapsedTime'] >= phases['greenTimes'][currentPhaseIndex // 3]:
+                        phases['elapsedTime'] = 0
+                        phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
+                elif currentPhaseIndex % 3 == 1:  # Yellow phase
+                    if phases['elapsedTime'] >= YELLOW_DURATION:
+                        phases['elapsedTime'] = 0
+                        phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
+                else:  # All Red phase
+                    if phases['elapsedTime'] >= ALL_RED_DURATION:
+                        phases['elapsedTime'] = 0
+                        phases['currentPhaseIndex'] = (currentPhaseIndex + 1) % 6
 
-            if phases['elapsedTime'] < CYCLE_LENGTH:
-                phases['elapsedTime'] += STEP_LENGTH
-            else:
-                phases['elapsedTime'] = 0  # Reset cycle
+                if phases['elapsedTime'] < CYCLE_LENGTH:
+                    phases['elapsedTime'] += STEP_LENGTH
+                else:
+                    phases['elapsedTime'] = 0  # Reset cycle
 
-        # TODO: Log some sort of metrics (mean queue length, vehicle speed, emissions, etc.)
+        # Log some sort of metrics (mean queue length, vehicle speed, emissions, etc.)
+        mean_percent_occupancy = np.mean([traci.edge.getLastStepOccupancy(edge) for edge in traci.edge.getIDList()])
+        mean_waiting_time = np.mean([traci.edge.getWaitingTime(edge) for edge in traci.edge.getIDList()])
+        vehicle_speed = np.mean([traci.vehicle.getSpeed(vehicle) for vehicle in traci.vehicle.getIDList()])
+        emissions = np.sum([traci.vehicle.getCO2Emission(vehicle) for vehicle in traci.vehicle.getIDList()])
+
+        logged_data.append({
+            "t": t,
+            "mean_percent_occupancy": mean_percent_occupancy,
+            "mean_waiting_time": mean_waiting_time,
+            "vehicle_speed": vehicle_speed,
+            "emissions": emissions,
+        })
 
     # end early if no more cars
     if traci.simulation.getMinExpectedNumber() == 0:
@@ -271,5 +284,7 @@ for i in range(MAX_CYCLES):
 
 traci.close()
 
-pd.DataFrame(logged_data).to_csv(DATA_FILE, index=False)
+log_df = pd.DataFrame(logged_data)
+log_df.to_csv(DATA_FILE, index=False)
+
 print("**** DONE! ****")
